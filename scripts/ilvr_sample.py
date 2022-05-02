@@ -20,17 +20,19 @@ import math
 
 
 # added
-def load_reference(data_dir, batch_size, image_size, class_cond=False):
+def load_reference(data_dir, target_data_dir, batch_size, image_size, class_cond=False):
     data = load_data(
         data_dir=data_dir,
+        target_data_dir=target_data_dir,
         batch_size=batch_size,
         image_size=image_size,
         class_cond=class_cond,
         deterministic=True,
         random_flip=False,
     )
-    for large_batch, model_kwargs in data:
+    for large_batch, target_large_batch, model_kwargs in data:
         model_kwargs["ref_img"] = large_batch
+        model_kwargs["ref_img_target"] = target_large_batch
         yield model_kwargs
 
 
@@ -66,6 +68,7 @@ def main():
     logger.log("loading data...")
     data = load_reference(
         args.base_samples,
+        args.target_samples,
         args.batch_size,
         image_size=args.image_size,
         class_cond=args.class_cond,
@@ -82,7 +85,8 @@ def main():
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
             resizers=resizers,
-            range_t=args.range_t
+            range_t=args.range_t,
+            range_t_target=args.range_t_target
         )
 
         for i in range(args.batch_size):
@@ -110,8 +114,10 @@ def create_argparser():
         batch_size=4,
         down_N=32,
         range_t=0,
+        range_t_target=750,
         use_ddim=False,
         base_samples="",
+        target_samples="",
         model_path="",
         save_dir="",
         save_latents=False,

@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Dataset
 def load_data(
     *,
     data_dir,
+    target_data_dir,
     batch_size,
     image_size,
     class_cond=False,
@@ -39,6 +40,9 @@ def load_data(
     if not data_dir:
         raise ValueError("unspecified data directory")
     all_files = _list_image_files_recursively(data_dir)
+    if not target_data_dir:
+        raise ValueError("unspecified target data directory")
+    all_target_files = _list_image_files_recursively(target_data_dir)
     classes = None
     if class_cond:
         # Assume classes are the first part of the filename,
@@ -49,6 +53,7 @@ def load_data(
     dataset = ImageDataset(
         image_size,
         all_files,
+        all_target_files,
         classes=classes,
         shard=MPI.COMM_WORLD.Get_rank(),
         num_shards=MPI.COMM_WORLD.Get_size(),
@@ -84,15 +89,17 @@ class ImageDataset(Dataset):
         self,
         resolution,
         image_paths,
+        target_image_paths,
         classes=None,
         shard=0,
         num_shards=1,
         random_crop=False,
-        random_flip=True,
+        random_flip=False,
     ):
         super().__init__()
         self.resolution = resolution
         self.local_images = image_paths[shard:][::num_shards]
+        self.local_target_images = target_image_paths[shard:][::num_shards]
         self.local_classes = None if classes is None else classes[shard:][::num_shards]
         self.random_crop = random_crop
         self.random_flip = random_flip
@@ -105,6 +112,7 @@ class ImageDataset(Dataset):
         with bf.BlobFile(path, "rb") as f:
             pil_image = Image.open(f)
             pil_image.load()
+            pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
         pil_image = pil_image.convert("RGB")
 
         if self.random_crop:
@@ -117,10 +125,27 @@ class ImageDataset(Dataset):
 
         arr = arr.astype(np.float32) / 127.5 - 1
 
+        path = self.local_target_images[idx]
+        with bf.BlobFile(path, "rb") as f:
+            pil_image = Image.open(f)
+            pil_image.load()
+            pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
+        pil_image = pil_image.convert("RGB")
+
+        if self.random_crop:
+            target_arr = random_crop_arr(pil_image, self.resolution)
+        else:
+            target_arr = center_crop_arr(pil_image, self.resolution)
+
+        if self.random_flip and random.random() < 0.5:
+            target_arr = target_arr[:, ::-1]
+
+        target_arr = target_arr.astype(np.float32) / 127.5 - 1
+
         out_dict = {}
         if self.local_classes is not None:
             out_dict["y"] = np.array(self.local_classes[idx], dtype=np.int64)
-        return np.transpose(arr, [2, 0, 1]), out_dict
+        return np.transpose(arr, [2, 0, 1]), np.transpose(target_arr, [2, 0, 1]), out_dict
 
 
 def center_crop_arr(pil_image, image_size):
