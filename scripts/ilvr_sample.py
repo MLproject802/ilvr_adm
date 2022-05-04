@@ -78,6 +78,11 @@ def main():
     count = 0
     while count * args.batch_size < args.num_samples:
         model_kwargs = next(data)
+        print("count success: ", count)
+        print("=====ref_img: =====")
+        print(model_kwargs["ref_img"])
+        print("=====ref_img_target:=====")
+        print(model_kwargs["ref_img_target"])
         model_kwargs = {k: v.to(dist_util.dev()) for k, v in model_kwargs.items()}
         sample = diffusion.p_sample_loop(
             model,
@@ -111,14 +116,14 @@ def create_argparser():
     defaults = dict(
         clip_denoised=True,
         num_samples=10000,
-        batch_size=4,
+        batch_size=1,
         down_N=32,
-        range_t=0,
-        range_t_target=750,
+        range_t=1000,
+        range_t_target=250,
         use_ddim=False,
         base_samples="",
         target_samples="",
-        model_path="",
+        model_path="models/ffhq_10m.pt",
         save_dir="",
         save_latents=False,
     )

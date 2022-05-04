@@ -450,8 +450,8 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         resizers=None,
-        range_t=0,
-        range_t_target=750
+        range_t=1000,
+        range_t_target=250
     ):
         """
         Generate samples from the model.
@@ -485,7 +485,7 @@ class GaussianDiffusion:
             progress=progress,
             resizers=resizers,
             range_t=range_t,
-            range_t_target=750
+            range_t_target=range_t_target
         ):
             final = sample
 
@@ -505,8 +505,8 @@ class GaussianDiffusion:
         device=None,
         progress=False,
         resizers=None,
-        range_t=0,
-        range_t_target=750
+        range_t=1000,
+        range_t_target=250
     ):
         """
         Generate samples from the model and yield intermediate samples from
@@ -548,10 +548,13 @@ class GaussianDiffusion:
                 )
                 #### ILVR ####
                 if resizers is not None:
-                    if i > range_t and i < range_t_target:
+                    print("range_t, range_t_target: ", range_t, range_t_target)
+                    if i <= range_t and i > range_t_target:
+                        print("using ref_img in i: ", i)
                         out["sample"] = out["sample"] - up(down(out["sample"])) + up(
                             down(self.q_sample(model_kwargs["ref_img"], t, th.randn(*shape, device=device))))
-                    if i >= range_t_target:
+                    if i <= range_t_target:
+                        print("using ref_img_target in i: ", i)
                         out["sample"] = out["sample"] - up(down(out["sample"])) + up(
                             down(self.q_sample(model_kwargs["ref_img_target"], t, th.randn(*shape, device=device))))
                 yield out
