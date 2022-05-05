@@ -631,7 +631,7 @@ class UNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps, y=None, ref_img=None, ref_img_target=None):
+    def forward(self, x, timesteps, y=None, ref_img=None, ref_img_target=None, inst=None, inst_target=None):
         """
         Apply the model to an input batch.
 

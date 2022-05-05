@@ -11,7 +11,6 @@ from torch.utils.data import DataLoader, Dataset
 def load_data(
     *,
     data_dir,
-    target_data_dir,
     batch_size,
     image_size,
     class_cond=False,
@@ -39,10 +38,14 @@ def load_data(
     """
     if not data_dir:
         raise ValueError("unspecified data directory")
-    all_files = _list_image_files_recursively(data_dir)
-    if not target_data_dir:
-        raise ValueError("unspecified target data directory")
-    all_target_files = _list_image_files_recursively(target_data_dir)
+    source_img_dir = data_dir + "/source_img"
+    target_img_dir = data_dir + "/target_img"
+    source_inst_dir = data_dir + "/source_inst"
+    target_inst_dir = data_dir + "/target_inst"
+    all_files = _list_image_files_recursively(source_img_dir)
+    all_files_target = _list_image_files_recursively(target_img_dir)
+    all_files_inst = _list_image_files_recursively(source_inst_dir)
+    all_files_target_inst = _list_image_files_recursively(target_inst_dir)
     classes = None
     if class_cond:
         # Assume classes are the first part of the filename,
@@ -53,7 +56,9 @@ def load_data(
     dataset = ImageDataset(
         image_size,
         all_files,
-        all_target_files,
+        all_files_target,
+        all_files_inst,
+        all_files_target_inst,
         classes=classes,
         shard=MPI.COMM_WORLD.Get_rank(),
         num_shards=MPI.COMM_WORLD.Get_size(),
@@ -88,8 +93,10 @@ class ImageDataset(Dataset):
     def __init__(
         self,
         resolution,
-        image_paths,
+        source_image_paths,
         target_image_paths,
+        source_inst_paths,
+        target_inst_paths,
         classes=None,
         shard=0,
         num_shards=1,
@@ -98,32 +105,31 @@ class ImageDataset(Dataset):
     ):
         super().__init__()
         self.resolution = resolution
-        self.local_images = image_paths[shard:][::num_shards]
+        self.local_source_images = source_image_paths[shard:][::num_shards]
         self.local_target_images = target_image_paths[shard:][::num_shards]
+        self.local_source_insts = source_inst_paths[shard:][::num_shards]
+        self.local_target_insts = target_inst_paths[shard:][::num_shards]
         self.local_classes = None if classes is None else classes[shard:][::num_shards]
         self.random_crop = random_crop
         self.random_flip = random_flip
 
     def __len__(self):
-        return len(self.local_images)
+        return len(self.local_source_images)
 
     def __getitem__(self, idx):
-        path = self.local_images[idx]
+        path = self.local_source_images[idx]
         with bf.BlobFile(path, "rb") as f:
             pil_image = Image.open(f)
             pil_image.load()
             pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
         pil_image = pil_image.convert("RGB")
-
         if self.random_crop:
-            arr = random_crop_arr(pil_image, self.resolution)
+            source_img = random_crop_arr(pil_image, self.resolution)
         else:
-            arr = center_crop_arr(pil_image, self.resolution)
-
+            source_img = center_crop_arr(pil_image, self.resolution)
         if self.random_flip and random.random() < 0.5:
-            arr = arr[:, ::-1]
-
-        arr = arr.astype(np.float32) / 127.5 - 1
+            source_img = source_img[:, ::-1]
+        source_img = source_img.astype(np.float32) / 127.5 - 1
 
         path = self.local_target_images[idx]
         with bf.BlobFile(path, "rb") as f:
@@ -131,21 +137,48 @@ class ImageDataset(Dataset):
             pil_image.load()
             pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
         pil_image = pil_image.convert("RGB")
-
         if self.random_crop:
-            target_arr = random_crop_arr(pil_image, self.resolution)
+            target_img = random_crop_arr(pil_image, self.resolution)
         else:
-            target_arr = center_crop_arr(pil_image, self.resolution)
-
+            target_img = center_crop_arr(pil_image, self.resolution)
         if self.random_flip and random.random() < 0.5:
-            target_arr = target_arr[:, ::-1]
+            target_img = target_img[:, ::-1]
+        target_img = target_img.astype(np.float32) / 127.5 - 1
 
-        target_arr = target_arr.astype(np.float32) / 127.5 - 1
+        path = self.local_source_insts[idx]
+        with bf.BlobFile(path, "rb") as f:
+            pil_image = Image.open(f)
+            pil_image.load()
+            pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
+        pil_image = pil_image.convert("RGB")
+        if self.random_crop:
+            source_inst = random_crop_arr(pil_image, self.resolution)
+        else:
+            source_inst = center_crop_arr(pil_image, self.resolution)
+        if self.random_flip and random.random() < 0.5:
+            source_inst = source_inst[:, ::-1]
+        source_inst = source_inst.astype(np.float32) / 127.5 - 1
+
+        path = self.local_target_insts[idx]
+        with bf.BlobFile(path, "rb") as f:
+            pil_image = Image.open(f)
+            pil_image.load()
+            pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
+        pil_image = pil_image.convert("RGB")
+        if self.random_crop:
+            target_inst = random_crop_arr(pil_image, self.resolution)
+        else:
+            target_inst = center_crop_arr(pil_image, self.resolution)
+        if self.random_flip and random.random() < 0.5:
+            target_inst = target_inst[:, ::-1]
+        target_inst = target_inst.astype(np.float32) / 127.5 - 1
 
         out_dict = {}
         if self.local_classes is not None:
             out_dict["y"] = np.array(self.local_classes[idx], dtype=np.int64)
-        return np.transpose(arr, [2, 0, 1]), np.transpose(target_arr, [2, 0, 1]), out_dict
+        return np.transpose(source_img, [2, 0, 1]), np.transpose(target_img, [2, 0, 1]),\
+               np.transpose(source_inst, [2, 0, 1]), np.transpose(target_inst, [2, 0, 1]),\
+               out_dict
 
 
 def center_crop_arr(pil_image, image_size):
