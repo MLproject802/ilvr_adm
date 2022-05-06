@@ -149,35 +149,19 @@ class ImageDataset(Dataset):
         with bf.BlobFile(path, "rb") as f:
             pil_image = Image.open(f)
             pil_image.load()
-            pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
-        pil_image = pil_image.convert("RGB")
-        if self.random_crop:
-            source_inst = random_crop_arr(pil_image, self.resolution)
-        else:
-            source_inst = center_crop_arr(pil_image, self.resolution)
-        if self.random_flip and random.random() < 0.5:
-            source_inst = source_inst[:, ::-1]
-        source_inst = source_inst.astype(np.float32) / 127.5 - 1
+            source_inst = pil_image.resize((256, 256), Image.ANTIALIAS)
 
         path = self.local_target_insts[idx]
         with bf.BlobFile(path, "rb") as f:
             pil_image = Image.open(f)
             pil_image.load()
-            pil_image = pil_image.resize((256, 256), Image.ANTIALIAS)
-        pil_image = pil_image.convert("RGB")
-        if self.random_crop:
-            target_inst = random_crop_arr(pil_image, self.resolution)
-        else:
-            target_inst = center_crop_arr(pil_image, self.resolution)
-        if self.random_flip and random.random() < 0.5:
-            target_inst = target_inst[:, ::-1]
-        target_inst = target_inst.astype(np.float32) / 127.5 - 1
+            target_inst = pil_image.resize((256, 256), Image.ANTIALIAS)
 
         out_dict = {}
         if self.local_classes is not None:
             out_dict["y"] = np.array(self.local_classes[idx], dtype=np.int64)
         return np.transpose(source_img, [2, 0, 1]), np.transpose(target_img, [2, 0, 1]),\
-               np.transpose(source_inst, [2, 0, 1]), np.transpose(target_inst, [2, 0, 1]),\
+               np.array(source_inst), np.array(target_inst),\
                out_dict
 
 
