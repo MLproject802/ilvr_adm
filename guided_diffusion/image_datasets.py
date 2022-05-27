@@ -5,6 +5,7 @@ from PIL import Image
 import blobfile as bf
 from mpi4py import MPI
 import numpy as np
+import torchvision.transforms as transforms
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -129,8 +130,11 @@ class ImageDataset(Dataset):
             source_img = center_crop_arr(pil_image, self.resolution)
         if self.random_flip and random.random() < 0.5:
             source_img = source_img[:, ::-1]
-        source_img = source_img.astype(np.float32) / 127.5 - 1
 
+        # image_path = "./output/source_test.png"
+        source_img = source_img.astype(np.float32) / 127.5 - 1
+        # print(np.unique(source_img))
+        # (Image.fromarray(source_img.astype('uint8')).convert('RGB')).save(image_path)
         path = self.local_target_images[idx]
         with bf.BlobFile(path, "rb") as f:
             pil_image = Image.open(f)

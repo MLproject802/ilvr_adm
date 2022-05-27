@@ -5,6 +5,7 @@ import blobfile as bf
 import numpy as np
 import torch as th
 import torch.distributed as dist
+import matplotlib.colors as mcolors
 import torchvision.transforms as transforms
 from guided_diffusion import dist_util, logger
 from guided_diffusion.script_util import (
@@ -83,7 +84,24 @@ def main():
         source_inst_map=model_kwargs['inst'][0]
         target_inst_map=model_kwargs['inst_target'][0]
         source=model_kwargs['ref_img'][0]
+        target=model_kwargs['ref_img_target'][0]
         # print("aaaaaaaaaaaaa",source.shape)
+        target_nose_area=th.where((target_inst_map==10) ,1,0).numpy()
+        source_nose_area=th.where((source_inst_map==10) ,1,0).numpy()
+        target=np.transpose(target, [1, 2, 0])
+        source=np.transpose(source, [1, 2, 0])
+        target_hsv=mcolors.rgb_to_hsv(target)
+        source_hsv=mcolors.rgb_to_hsv(source)
+        target_hsv=np.transpose(target_hsv,[2,1,0])
+        source_hsv=np.transpose(source_hsv,[2,1,0])
+        target_nose_hsv_h=np.sum(target_hsv[0]*target_nose_area)/np.sum(target_nose_area)
+        source_nose_hsv_h=np.sum(source_hsv[0]*source_nose_area)/np.sum(source_nose_area)
+        delta_h=target_nose_hsv_h-source_nose_hsv_h
+        source_hsv[0]=np.where(source_nose_area,source_hsv[0]+delta_h*np.ones((256,256)),source_hsv[0])
+        source_hsv=np.transpose(source_hsv,[1,2,0])
+        modified_source=th.from_numpy(np.transpose(mcolors.hsv_to_rgb(source_hsv),[2,1,0]))
+        model_kwargs['ref_img'][0]=modified_source
+        source=model_kwargs['ref_img'][0]
         inst_squeeze=source_inst_map
         inst_squeeze_target=target_inst_map
         source_test=th.zeros([3,256,256]).cuda()
@@ -138,11 +156,15 @@ def main():
                     source_moved=th.where(source_id_area.byte(),source_moved,source_id_area.float())
                     source_test[i]+=source_moved
                     model_kwargs['ref_img_target'][0][i]=th.where(source_id_area.byte().cpu(),source_moved.cpu(),model_kwargs['ref_img_target'][0][i])
-                
-        # print(model_kwargs['ref_img_target'].shape)
+        # print(th.unique(model_kwargs["ref_img"]))
         # unloader=transforms.ToPILImage()
-        # image = source_test.cpu().clone()
-        # image = image.squeeze(0)
+        # wrongimage =model_kwargs["ref_img"].cpu().clone()
+        # wrongimage = wrongimage.squeeze(0)
+        # print(wrongimage.shape)
+        # image=th.zeros([3,256,256])
+        # image[0]=wrongimage[0]
+        # image[1]=wrongimage[1]
+        # image[2]=wrongimage[2]
         # image = unloader(image)
         # image_path = "./output/source_test.png"
         # image.save(image_path)
@@ -177,7 +199,7 @@ def main():
 def create_argparser():
     defaults = dict(
         clip_denoised=True,
-        num_samples=4,
+        num_samples=20,
         batch_size=1,
         down_N=8,
         range_t=0,
